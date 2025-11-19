@@ -5,11 +5,11 @@
 #include <unistd.h>
 #include <time.h>
 
-// --- CONFIGURACIÓN DE SERVIDOR (ALTA CARGA) ---
-#define NUM_CUENTAS 1000        // Tamaño de la Base de Datos
-#define NUM_WORKERS 50          // 50 Hilos simultáneos
-#define TRANSACCIONES_POR_WORKER 200 // Operaciones por hilo
-#define RETARDO_IO 2000         // Latencia simulada (microsegundos)
+// --- CONFIGURACIÓN PARA HTOP ---
+#define NUM_CUENTAS 100        // Base de datos
+#define NUM_HILOS 20           // 20 Hilos (Se ve genial en htop)
+#define OPS_POR_HILO 50        // Cada uno hace 50 operaciones
+#define DELAY_MICROSEGUNDOS 500000 // 0.5 Segundos de espera (Cámara lenta)
 
 // --- ESTRUCTURAS ---
 typedef struct {
@@ -18,122 +18,126 @@ typedef struct {
 } Cuenta;
 
 // --- RECURSOS COMPARTIDOS ---
-Cuenta base_datos[NUM_CUENTAS]; 
-sem_t sem_db_lock;              // Semáforo (Mutex)
-long transacciones_exitosas = 0;
-long transacciones_fallidas = 0;
+Cuenta base_datos[NUM_CUENTAS];
+sem_t sem_transaccion;         
+int total_ops_ok = 0;
+int total_ops_error = 0;
 
 // --- INICIALIZACIÓN ---
 void inicializar_bd() {
     for (int i = 0; i < NUM_CUENTAS; i++) {
         base_datos[i].id = i;
-        base_datos[i].saldo = 1000.0 + (rand() % 5000); 
+        base_datos[i].saldo = 1000.0; 
     }
-    printf("[INFO] Base de Datos montada. Registros: %d\n", NUM_CUENTAS);
+    printf(">> [INIT] Base de datos cargada con %d cuentas.\n", NUM_CUENTAS);
 }
 
-// --- WORKER (Lógica de Transacción) ---
-void *worker_db(void *arg) {
-    // int id_worker = *(int *)arg; // No se usa en el log limpio, pero se mantiene la estructura
+// --- LÓGICA DEL HILO ---
+void *cajero_thread(void *arg) {
+    int id_hilo = *(int *)arg;
     
-    for (int i = 0; i < TRANSACCIONES_POR_WORKER; i++) {
+    for (int i = 0; i < OPS_POR_HILO; i++) {
         
-        // Simular latencia de red/disco
-        usleep(rand() % RETARDO_IO);
+        // === EL DELAY PARA HTOP ===
+        // Pausa de medio segundo. El hilo se queda "vivo" pero durmiendo.
+        // Esto permite cambiar de ventana y verlo en la lista de procesos.
+        usleep(DELAY_MICROSEGUNDOS);
 
-        int tipo_ops = rand() % 3; // 0: Depósito, 1: Retiro, 2: Transferencia
-        int cuenta_a = rand() % NUM_CUENTAS;
-        int cuenta_b = rand() % NUM_CUENTAS; 
-        double monto = 10 + (rand() % 500);
+        // Generar datos aleatorios
+        int tipo = rand() % 3; 
+        int cuenta_A = rand() % NUM_CUENTAS;
+        int cuenta_B = rand() % NUM_CUENTAS;
+        double monto = 10 + (rand() % 200);
 
-        // --- INICIO ZONA CRÍTICA ---
-        sem_wait(&sem_db_lock);
+        // --- ZONA CRÍTICA ---
+        sem_wait(&sem_transaccion);
 
-        if (tipo_ops == 0) { 
-            // Depósito
-            base_datos[cuenta_a].saldo += monto;
-            transacciones_exitosas++;
+        if (tipo == 0) { // Depósito
+            base_datos[cuenta_A].saldo += monto;
+            printf("Hilo %02d: [+] Depósito $%3.0f a Cta %d. Nuevo: %.2f\n", 
+                   id_hilo, monto, cuenta_A, base_datos[cuenta_A].saldo);
+            total_ops_ok++;
         } 
-        else if (tipo_ops == 1) { 
-            // Retiro (con validación)
-            if (base_datos[cuenta_a].saldo >= monto) {
-                base_datos[cuenta_a].saldo -= monto;
-                transacciones_exitosas++;
+        else if (tipo == 1) { // Retiro
+            if (base_datos[cuenta_A].saldo >= monto) {
+                base_datos[cuenta_A].saldo -= monto;
+                printf("Hilo %02d: [-] Retiro   $%3.0f de Cta %d. Nuevo: %.2f\n", 
+                       id_hilo, monto, cuenta_A, base_datos[cuenta_A].saldo);
+                total_ops_ok++;
             } else {
-                transacciones_fallidas++;
+                printf("Hilo %02d: [!] FONDOS INSUFICIENTES en Cta %d.\n", id_hilo, cuenta_A);
+                total_ops_error++;
             }
         } 
-        else { 
-            // Transferencia
-            if (cuenta_a != cuenta_b && base_datos[cuenta_a].saldo >= monto) {
-                base_datos[cuenta_a].saldo -= monto;
-                base_datos[cuenta_b].saldo += monto;
-                transacciones_exitosas++;
+        else { // Transferencia
+            if (base_datos[cuenta_A].saldo >= monto && cuenta_A != cuenta_B) {
+                base_datos[cuenta_A].saldo -= monto;
+                base_datos[cuenta_B].saldo += monto;
+                printf("Hilo %02d: [>] Transf.  $%3.0f de Cta %d a %d.\n", 
+                       id_hilo, monto, cuenta_A, cuenta_B);
+                total_ops_ok++;
             } else {
-                transacciones_fallidas++;
+                // Fallos de transferencia no se imprimen para no ensuciar tanto el log
+                total_ops_error++;
             }
         }
-        
-        // Log de progreso simplificado (cada 100 ops)
-        long total = transacciones_exitosas + transacciones_fallidas;
-        if (total % 100 == 0) {
-             printf("[PROCESANDO] Total: %ld | OK: %ld | Error: %ld\r", total, transacciones_exitosas, transacciones_fallidas);
-             fflush(stdout);
-        }
 
+        sem_post(&sem_transaccion);
         // --- FIN ZONA CRÍTICA ---
-        sem_post(&sem_db_lock);
     }
 
     pthread_exit(NULL);
 }
 
+// --- MAIN ---
 int main() {
-    pthread_t workers[NUM_WORKERS];
-    int ids[NUM_WORKERS];
-    struct timespec start, end;
+    pthread_t hilos[NUM_HILOS];
+    int ids[NUM_HILOS];
+    struct timespec inicio, fin;
 
     srand(time(NULL));
-
-    printf("--- SERVIDOR DE TRANSACCIONES BANCARIAS v3.0 ---\n");
-    printf("Configuracion: %d Hilos | %d Cuentas\n", NUM_WORKERS, NUM_CUENTAS);
-    
     inicializar_bd();
-    sem_init(&sem_db_lock, 0, 1); // Inicializar Semáforo Binario
-
-    printf("[INFO] Iniciando workers... Espere finalizacion.\n");
     
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    // Inicializar Semáforo
+    sem_init(&sem_transaccion, 0, 1);
 
-    // Crear Hilos
-    for (int i = 0; i < NUM_WORKERS; i++) {
+    printf("\n--- INICIANDO SISTEMA BANCARIO DE ALTA CONCURRENCIA ---\n");
+    printf("Configuración: %d Hilos | %d Ops/Hilo | Delay: 0.5s\n", NUM_HILOS, OPS_POR_HILO);
+    printf("El sistema se ejecutará lentamente para monitoreo...\n");
+    sleep(2); // Breve pausa para leer
+
+    // 1. INICIO RELOJ
+    clock_gettime(CLOCK_MONOTONIC, &inicio);
+
+    // 2. CREAR HILOS
+    for (int i = 0; i < NUM_HILOS; i++) {
         ids[i] = i;
-        if (pthread_create(&workers[i], NULL, worker_db, &ids[i]) != 0) {
-            perror("Error fatal creando hilo");
-            exit(1);
-        }
+        pthread_create(&hilos[i], NULL, cajero_thread, &ids[i]);
     }
 
-    // Esperar Hilos (Join)
-    for (int i = 0; i < NUM_WORKERS; i++) {
-        pthread_join(workers[i], NULL);
+    // 3. ESPERAR HILOS
+    for (int i = 0; i < NUM_HILOS; i++) {
+        pthread_join(hilos[i], NULL);
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
+    // 4. FIN RELOJ
+    clock_gettime(CLOCK_MONOTONIC, &fin);
 
-    // Métricas
-    double tiempo_total = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    double tps = (transacciones_exitosas + transacciones_fallidas) / tiempo_total;
+    // Resultados
+    double tiempo_total = (fin.tv_sec - inicio.tv_sec) + (fin.tv_nsec - inicio.tv_nsec) / 1e9;
+    int total_total = total_ops_ok + total_ops_error;
 
-    printf("\n\n--- REPORTE DE RENDIMIENTO ---\n");
-    printf("Estado:                FINALIZADO\n");
-    printf("Tiempo Total:          %.4f segundos\n", tiempo_total);
-    printf("Transacciones Totales: %ld\n", transacciones_exitosas + transacciones_fallidas);
-    printf(" > Exitosas:           %ld\n", transacciones_exitosas);
-    printf(" > Fallidas (Fondos):  %ld\n", transacciones_fallidas);
-    printf("Rendimiento (TPS):     %.2f ops/seg\n", tps);
-    printf("------------------------------\n");
+    printf("\n============================================\n");
+    printf("          REPORTE FINAL DE EJECUCIÓN        \n");
+    printf("============================================\n");
+    printf("Estado:              FINALIZADO\n");
+    printf("Tiempo Total:        %.4f segundos\n", tiempo_total);
+    printf("Transacciones:       %d Totales\n", total_total);
+    printf("   - Exitosas:       %d\n", total_ops_ok);
+    printf("   - Fallidas:       %d\n", total_ops_error);
+    printf("Sincronización:      Semáforo POSIX (sem_t)\n");
+    printf("============================================\n");
 
-    sem_destroy(&sem_db_lock);
+    sem_destroy(&sem_transaccion);
     return 0;
 }

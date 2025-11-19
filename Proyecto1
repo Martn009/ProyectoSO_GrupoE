@@ -1,0 +1,95 @@
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <time.h> // Necesario para clock_gettime
+
+#define NUM_HILOS 4              // Número de cajeros (hilos)
+#define TRANSACCIONES_POR_HILO 5 // Cada hilo hará 5 operaciones
+
+// Recursos compartidos
+sem_t sem_base_datos;            // Semáforo para proteger la variable global (actúa como Mutex)
+double saldo_banco = 0.0;        // La "Base de Datos" compartida
+
+// Función del Hilo (Equivalente a accion_filosofos)
+void *accion_cajero(void *args) {
+    int id = *(int *)args;
+    int i;
+
+    for (i = 0; i < TRANSACCIONES_POR_HILO; i++) {
+        
+        // 1. Simular trabajo previo (preparando la transacción)
+        printf("Cajero %d: Preparando documento %d...\n", id, i+1);
+        usleep(100000 + rand() % 200000); // Pausa aleatoria pequeña
+
+        // 2. INTENTA ENTRAR A LA ZONA CRÍTICA (Semáforo)
+        // Es el equivalente a tomar los tenedores
+        sem_wait(&sem_base_datos);
+
+        // --- INICIO ZONA CRÍTICA ---
+        printf(">>> Cajero %d: ACCEDIENDO a la Base de Datos...\n", id);
+        
+        // Operación: Sumar dinero al banco
+        double deposito = 100.0;
+        saldo_banco = saldo_banco + deposito;
+        
+        printf(">>> Cajero %d: Nuevo saldo actualizado a $%.2f\n", id, saldo_banco);
+        // --- FIN ZONA CRÍTICA ---
+
+        // 3. SALE DE LA ZONA CRÍTICA
+        // Equivalente a soltar los tenedores
+        sem_post(&sem_base_datos);
+    }
+    
+    printf("--- Cajero %d ha terminado su turno ---\n", id);
+    pthread_exit(NULL);
+}
+
+int main() {
+    pthread_t hilos[NUM_HILOS];
+    int ids_hilos[NUM_HILOS];
+    int i;
+    struct timespec inicio, fin;
+
+    srand(time(NULL));
+
+    // Inicializa el semáforo en 1.
+    // Al estar en 1, funciona como un MUTEX (solo entra uno a la vez).
+    sem_init(&sem_base_datos, 0, 1);
+
+    printf("--- Iniciando Sistema Bancario con Semáforos ---\n");
+
+    // Tomar tiempo de inicio
+    clock_gettime(CLOCK_MONOTONIC, &inicio);
+
+    // Crea los hilos (Cajeros)
+    for (i = 0; i < NUM_HILOS; i++) {
+        ids_hilos[i] = i; // Asignar ID 0, 1, 2, 3...
+        pthread_create(&hilos[i], NULL, accion_cajero, &ids_hilos[i]);
+    }
+
+    // Espera a que los hilos terminen (pthread_join)
+    for (i = 0; i < NUM_HILOS; i++) {
+        pthread_join(hilos[i], NULL);
+    }
+
+    // Tomar tiempo final
+    clock_gettime(CLOCK_MONOTONIC, &fin);
+
+    // Calcular duración
+    double tiempo_total = (fin.tv_sec - inicio.tv_sec) + 
+                          (fin.tv_nsec - inicio.tv_nsec) / 1e9;
+
+    // Resultados
+    printf("\n========================================\n");
+    printf("PROCESAMIENTO FINALIZADO\n");
+    printf("Saldo Final en Banco: $%.2f\n", saldo_banco);
+    printf("Tiempo Total: %.4f segundos\n", tiempo_total);
+    printf("========================================\n");
+
+    // Limpieza
+    sem_destroy(&sem_base_datos);
+
+    return 0;
+}

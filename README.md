@@ -4,19 +4,28 @@
 # Requisitos y Compilacióm
 ## Requisitos del Sistema
 
-Para compilar y ejecutar este programa, se requieren las siguientes herramientas:
+Para poder compilar y ejecutar el programa de manera adecuada, es necesario contar con las siguientes herramientas y configuraciones, dependiendo del sistema operativo que utilices:
 
-- **Sistema operativo**: Linux o MacOS (Windows puede necesitar un entorno compatible con POSIX como Cygwin o WSL).
-- **Compilador de C**: GCC (GNU Compiler Collection).
-- **Librerías**: 
-  - `pthread`: Para manejo de hilos.
-  - `semaphore.h`: Para manejo de semáforos POSIX.
+### Sistema Operativo
 
-## Instalación
+- **Linux o MacOS**: Este programa está diseñado para entornos POSIX, por lo que los sistemas operativos como **Linux** o **MacOS** son completamente compatibles sin necesidad de configuraciones adicionales.
+- **Windows**: En el caso de utilizar **Windows**, debido a que no es un entorno POSIX, se puede utilizar alguno de los siguientes métodos para configurar el entorno necesario para la ejecución:
+  - **WSL (Windows Subsystem for Linux)**: Permite ejecutar una distribución de Linux directamente dentro de Windows. Se recomienda esta opción debido a su simplicidad y rendimiento.
+  - **Cygwin**: Cygwin proporciona un entorno POSIX dentro de Windows, pero su uso puede ser más complejo que WSL.
+  - **Máquinas Virtuales con VirtualBox**: Puedes crear una máquina virtual corriendo Linux (por ejemplo, Ubuntu) usando VirtualBox, lo que ofrece un entorno Linux completo en tu máquina Windows.
 
-### 1. Instalar Dependencias
+### Requisitos de Software
 
-En sistemas basados en Debian (como Ubuntu), las dependencias necesarias se pueden instalar con el siguiente comando:
+- **Compilador de C**: El código está escrito en C, por lo que necesitas un compilador como **GCC** (GNU Compiler Collection), que está disponible en la mayoría de los entornos POSIX. Si usas Windows, **WSL** o **Cygwin** también incluyen GCC.
+- **Librerías**:
+  - **pthread**: Necesaria para el manejo de hilos en el programa. En sistemas Linux o MacOS, `pthread` es parte de la librería estándar, por lo que no requiere instalación adicional.
+  - **semaphore.h**: Esta librería se utiliza para la sincronización entre hilos mediante semáforos POSIX. Al igual que `pthread`, se incluye en la mayoría de los sistemas POSIX, por lo que no es necesario instalarla por separado en Linux o MacOS.
+
+## Instalación y Configuración
+
+### 1. Instalación en Linux y MacOS
+
+En sistemas basados en **Linux** (como Ubuntu) o **MacOS**, los pasos son sencillos. Primero, asegúrate de tener instaladas las herramientas necesarias para compilar el programa. Para ello, abre una terminal y ejecuta el siguiente comando para instalar **GCC** y otras herramientas esenciales de desarrollo:
 
 ```bash
 sudo apt-get update

@@ -1,5 +1,26 @@
 # Proyecto I Bimestre - Sistemas Operativos
 
+# Requisitos y Compilación
+## Requisitos del Sistema
+
+Para compilar y ejecutar este programa, se requieren las siguientes herramientas:
+
+- **Sistema operativo**: Linux o MacOS (Windows puede necesitar un entorno compatible con POSIX como Cygwin o WSL).
+- **Compilador de C**: GCC (GNU Compiler Collection).
+- **Librerías**: 
+  - `pthread`: Para manejo de hilos.
+  - `semaphore.h`: Para manejo de semáforos POSIX.
+
+## Instalación
+
+### 1. Instalar Dependencias
+
+En sistemas basados en Debian (como Ubuntu), las dependencias necesarias se pueden instalar con el siguiente comando:
+
+```bash
+sudo apt-get update
+sudo apt-get install build-essential
+```
 
 # Inicialización y Creación de Hilos en el Sistema Bancario de Alta Concurrencia
 

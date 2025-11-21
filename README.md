@@ -1,6 +1,7 @@
 # Proyecto I Bimestre - Sistemas Operativos
 
 
+# Requisitos y Compilacióm
 ## Requisitos del Sistema
 
 Para compilar y ejecutar este programa, se requieren las siguientes herramientas:
